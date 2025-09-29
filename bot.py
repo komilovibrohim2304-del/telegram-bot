@@ -6,7 +6,7 @@ from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 
 # Token environmentdan olinadi
-API_TOKEN = os.getenv("8499894637:AAHAWZyQIgHTmD-kFF2HvmVvMB0qw8ejdE8")
+API_TOKEN = os.getenv("BOT_TOKEN")
 
 logging.basicConfig(level=logging.INFO)
 
