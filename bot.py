@@ -76,8 +76,13 @@ async def text_handler(message: Message):
         user_sessions[user_id]["name"] = message.text
         user_sessions[user_id]["step"] = "ask_phone"
 
-        kb = ReplyKeyboardMarkup(resize_keyboard=True)
-        kb.add(KeyboardButton("Telefon raqamni yuborish", request_contact=True))
+        # ✅ To‘g‘rilangan joy
+        kb = ReplyKeyboardMarkup(
+            keyboard=[
+                [KeyboardButton(text="Telefon raqamni yuborish", request_contact=True)]
+            ],
+            resize_keyboard=True
+        )
         await message.answer("Telefon raqamingizni yuboring 📞", reply_markup=kb)
 
     elif step == "chat":
@@ -115,7 +120,7 @@ async def contact_handler(message: Message):
 
 WEBHOOK_PATH = "/webhook"
 # Render sizga domen beradi: https://project-name.onrender.com
-WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')}{WEBHOOK_PATH}"
+WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL', 'https://telegram-bot-1riz.onrender.com')}{WEBHOOK_PATH}"
 
 WEBAPP_HOST = "0.0.0.0"
 WEBAPP_PORT = int(os.getenv("PORT", 10000))
