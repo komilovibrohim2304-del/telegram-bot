@@ -3,8 +3,14 @@ import random
 import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.types import (
+    Message,
+    ReplyKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardRemove
+)
 from aiogram.filters import Command, CommandStart
+from aiohttp import web
 
 # Token environmentdan olinadi
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -21,6 +27,7 @@ managers_list = {}  # manager_id -> name
 # Faqat siz uchun (admin ID kiriting)
 ADMIN_ID = 1249958916
 
+# --- Handlers ---
 
 @dp.message(CommandStart())
 async def start_cmd(message: Message):
@@ -104,10 +111,34 @@ async def contact_handler(message: Message):
         f"🆕 Yangi mijoz:\n\n👤 Ism: {name}\n📞 Telefon: {message.contact.phone_number}\n\nEndi yozishishingiz mumkin."
     )
 
+# --- Webhook setup ---
 
-async def main():
-    await dp.start_polling(bot)
+WEBHOOK_PATH = "/webhook"
+# Render sizga domen beradi: https://project-name.onrender.com
+WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL', 'https://your-app.onrender.com')}{WEBHOOK_PATH}"
 
+WEBAPP_HOST = "0.0.0.0"
+WEBAPP_PORT = int(os.getenv("PORT", 10000))
+
+async def on_startup(app):
+    await bot.set_webhook(WEBHOOK_URL)
+
+async def on_shutdown(app):
+    await bot.delete_webhook()
+    await bot.session.close()
+
+async def handle(request):
+    data = await request.json()
+    update = types.Update(**data)
+    await dp.feed_update(bot, update)
+    return web.Response()
+
+def main():
+    app = web.Application()
+    app.router.add_post(WEBHOOK_PATH, handle)
+    app.on_startup.append(on_startup)
+    app.on_shutdown.append(on_shutdown)
+    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()
