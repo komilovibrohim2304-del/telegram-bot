@@ -4,6 +4,7 @@ import os
 import asyncio
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
+from aiogram.filters import Command, CommandStart
 
 # Token environmentdan olinadi
 API_TOKEN = os.getenv("BOT_TOKEN")
@@ -21,7 +22,7 @@ managers_list = {}  # manager_id -> name
 ADMIN_ID = 1249958916
 
 
-@dp.message(commands=["start"])
+@dp.message(CommandStart())
 async def start_cmd(message: Message):
     args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
     uid = message.from_user.id
@@ -36,7 +37,7 @@ async def start_cmd(message: Message):
     user_sessions[uid] = {"step": "ask_name"}
 
 
-@dp.message(commands=["list_managers"])
+@dp.message(Command("list_managers"))
 async def list_managers(message: Message):
     if message.from_user.id != ADMIN_ID:
         return
@@ -77,7 +78,7 @@ async def text_handler(message: Message):
         await bot.send_message(manager_id, f"👤 {user_sessions[user_id]['name']}: {message.text}")
 
 
-@dp.message(content_types=["contact"])
+@dp.message(lambda msg: msg.contact is not None)
 async def contact_handler(message: Message):
     user_id = message.from_user.id
     if user_id not in user_sessions or user_sessions[user_id].get("step") != "ask_phone":
