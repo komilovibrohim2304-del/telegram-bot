@@ -1,99 +1,63 @@
-import logging
+import json
 import random
-import os
-import asyncio
-from aiogram import Bot, Dispatcher, types
+import logging
+from pathlib import Path
+from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
-    Message,
-    ReplyKeyboardMarkup,
-    KeyboardButton,
-    ReplyKeyboardRemove
+    Message, ReplyKeyboardMarkup, KeyboardButton, ReplyKeyboardRemove
 )
-from aiogram.filters import Command, CommandStart
-from aiohttp import web
+from aiogram.filters import CommandStart, Command
 
-# Token environmentdan olinadi
-API_TOKEN = os.getenv("BOT_TOKEN")
+# ====== CONFIG ======
+TOKEN = "8499894637:AAHAWZyQIgHTmD-kFF2HvmVvMB0qw8ejdE8"
+WEBHOOK_URL = "https://telegram-bot-1riz.onrender.com"   # Render.com URL
+ADMIN_ID = 1249958916  # o'zingizni Telegram ID'ingiz
+MANAGERS_FILE = Path("managers.json")
+
+bot = Bot(token=TOKEN)
+dp = Dispatcher()
 
 logging.basicConfig(level=logging.INFO)
 
-bot = Bot(token=API_TOKEN)
-dp = Dispatcher()
+# ====== MANAGERS STORAGE ======
+def load_managers():
+    if MANAGERS_FILE.exists():
+        return json.loads(MANAGERS_FILE.read_text())
+    return {}
 
-# Sessiyalar
+def save_managers(managers: dict):
+    MANAGERS_FILE.write_text(json.dumps(managers))
+
+managers_list = load_managers()
+
+# ====== USER SESSIONS ======
 user_sessions = {}
-managers_list = {}  # manager_id -> name
 
-# Faqat siz uchun (admin ID kiriting)
-ADMIN_ID = 1249958916
-
-# --- Handlers ---
-
+# ====== HANDLERS ======
 @dp.message(CommandStart())
-async def start_cmd(message: Message):
-    args = message.text.split(maxsplit=1)[1] if len(message.text.split()) > 1 else None
-    uid = message.from_user.id
-    name = message.from_user.full_name
-
-    if args and args.lower() == "register_manager":
-        managers_list[uid] = name
-        await message.answer(f"✅ Siz menejer sifatida ro'yxatga olindingiz.\nID: {uid}")
-        return
-
-    await message.answer("Assalomu alaykum! 👋\nIltimos, ismingizni yuboring.")
-    user_sessions[uid] = {"step": "ask_name"}
+async def start_handler(message: Message):
+    user_sessions[message.from_user.id] = {"step": "ask_name"}
+    await message.answer("Assalomu alaykum! 👋\nIltimos, ismingizni yozing:")
 
 
-@dp.message(Command("list_managers"))
-async def list_managers(message: Message):
-    if message.from_user.id != ADMIN_ID:
-        return
-    if not managers_list:
-        await message.answer("❌ Hozircha menejerlar ro'yxati bo'sh.")
-        return
-    text = "\n".join([f"{mid}: {mname}" for mid, mname in managers_list.items()])
-    await message.answer("📋 Menejerlar:\n" + text)
-
-
-@dp.message()
-async def text_handler(message: Message):
+@dp.message(F.text, lambda msg: user_sessions.get(msg.from_user.id, {}).get("step") == "ask_name")
+async def name_handler(message: Message):
     user_id = message.from_user.id
+    user_sessions[user_id]["name"] = message.text
+    user_sessions[user_id]["step"] = "ask_phone"
 
-    # Managerlar uchun relay
-    if user_id in managers_list:
-        for uid, sess in user_sessions.items():
-            if sess.get("manager_id") == user_id:
-                await bot.send_message(uid, f"{managers_list[user_id]}: {message.text}")
-                return
+    kb = ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="📱 Telefon raqamni yuborish", request_contact=True)]],
+        resize_keyboard=True
+    )
 
-    if user_id not in user_sessions:
-        await message.answer("Boshlash uchun /start buyrug‘ini yuboring.")
-        return
-
-    step = user_sessions[user_id].get("step")
-
-    if step == "ask_name":
-        user_sessions[user_id]["name"] = message.text
-        user_sessions[user_id]["step"] = "ask_phone"
-
-        # ✅ To‘g‘rilangan joy
-        kb = ReplyKeyboardMarkup(
-            keyboard=[
-                [KeyboardButton(text="Telefon raqamni yuborish", request_contact=True)]
-            ],
-            resize_keyboard=True
-        )
-        await message.answer("Telefon raqamingizni yuboring 📞", reply_markup=kb)
-
-    elif step == "chat":
-        manager_id = user_sessions[user_id]["manager_id"]
-        await bot.send_message(manager_id, f"👤 {user_sessions[user_id]['name']}: {message.text}")
+    await message.answer("Rahmat! Endi telefon raqamingizni yuboring:", reply_markup=kb)
 
 
-@dp.message(lambda msg: msg.contact is not None)
+@dp.message(F.contact)
 async def contact_handler(message: Message):
     user_id = message.from_user.id
-    if user_id not in user_sessions or user_sessions[user_id].get("step") != "ask_phone":
+    if user_sessions.get(user_id, {}).get("step") != "ask_phone":
         return
 
     user_sessions[user_id]["phone"] = message.contact.phone_number
@@ -109,41 +73,90 @@ async def contact_handler(message: Message):
 
     name = user_sessions[user_id]["name"]
 
-    await message.answer("Rahmat, sizga eng yaxshi mutaxassisni biriktirdim !", reply_markup=ReplyKeyboardRemove())
+    await message.answer(
+        "✅ Rahmat! Sizga mutaxassis biriktirildi.\nTez orada u siz bilan bog‘lanadi.",
+        reply_markup=ReplyKeyboardRemove()
+    )
 
     await bot.send_message(
         manager_id,
         f"🆕 Yangi mijoz:\n\n👤 Ism: {name}\n📞 Telefon: {message.contact.phone_number}\n\nEndi yozishishingiz mumkin."
     )
 
-# --- Webhook setup ---
 
-WEBHOOK_PATH = "/webhook"
-# Render sizga domen beradi: https://project-name.onrender.com
-WEBHOOK_URL = f"{os.getenv('RENDER_EXTERNAL_URL', 'https://telegram-bot-1riz.onrender.com')}{WEBHOOK_PATH}"
+# ====== ADMIN COMMANDS ======
+@dp.message(Command("add_manager"))
+async def add_manager(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.answer("❌ Sizda ruxsat yo‘q.")
+    
+    parts = message.text.split(maxsplit=2)
+    if len(parts) < 3:
+        return await message.answer("ℹ️ Foydalanish: /add_manager <id> <ism>")
 
-WEBAPP_HOST = "0.0.0.0"
-WEBAPP_PORT = int(os.getenv("PORT", 10000))
+    manager_id, manager_name = parts[1], parts[2]
+    managers_list[manager_id] = manager_name
+    save_managers(managers_list)
+    await message.answer(f"✅ Menejer qo‘shildi: {manager_name} ({manager_id})")
 
-async def on_startup(app):
+
+@dp.message(Command("del_manager"))
+async def del_manager(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.answer("❌ Sizda ruxsat yo‘q.")
+    
+    parts = message.text.split(maxsplit=1)
+    if len(parts) < 2:
+        return await message.answer("ℹ️ Foydalanish: /del_manager <id>")
+
+    manager_id = parts[1]
+    if manager_id in managers_list:
+        name = managers_list.pop(manager_id)
+        save_managers(managers_list)
+        await message.answer(f"✅ Menejer o‘chirildi: {name} ({manager_id})")
+    else:
+        await message.answer("❌ Bunday menejer yo‘q.")
+
+
+@dp.message(Command("list_managers"))
+async def list_managers(message: Message):
+    if message.from_user.id != ADMIN_ID:
+        return await message.answer("❌ Sizda ruxsat yo‘q.")
+
+    if not managers_list:
+        return await message.answer("📭 Menejerlar ro‘yxati bo‘sh.")
+    
+    text = "📋 Menejerlar ro‘yxati:\n"
+    for mid, name in managers_list.items():
+        text += f"- {name} ({mid})\n"
+    await message.answer(text)
+
+
+# ====== START WEBHOOK ======
+async def main():
+    from aiohttp import web
+
+    async def handle_webhook(request):
+        update = await request.json()
+        await dp.feed_webhook_update(bot, update)
+        return web.Response()
+
+    app = web.Application()
+    app.router.add_post("/webhook", handle_webhook)
+
+    # Webhookni sozlash
     await bot.set_webhook(WEBHOOK_URL)
 
-async def on_shutdown(app):
-    await bot.delete_webhook()
-    await bot.session.close()
+    runner = web.AppRunner(app)
+    await runner.setup()
+    site = web.TCPSite(runner, "0.0.0.0", 8080)
+    await site.start()
 
-async def handle(request):
-    data = await request.json()
-    update = types.Update(**data)
-    await dp.feed_update(bot, update)
-    return web.Response()
+    logging.info("Webhook server started!")
 
-def main():
-    app = web.Application()
-    app.router.add_post(WEBHOOK_PATH, handle)
-    app.on_startup.append(on_startup)
-    app.on_shutdown.append(on_shutdown)
-    web.run_app(app, host=WEBAPP_HOST, port=WEBAPP_PORT)
+    while True:
+        await asyncio.sleep(3600)
 
 if __name__ == "__main__":
-    main()
+    import asyncio
+    asyncio.run(main())
