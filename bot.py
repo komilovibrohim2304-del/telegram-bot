@@ -1,6 +1,7 @@
 import json
 import random
 import logging
+import asyncio
 from pathlib import Path
 from aiogram import Bot, Dispatcher, F
 from aiogram.types import (
@@ -10,8 +11,9 @@ from aiogram.filters import CommandStart, Command
 
 # ====== CONFIG ======
 TOKEN = "8499894637:AAHAWZyQIgHTmD-kFF2HvmVvMB0qw8ejdE8"
-WEBHOOK_URL = "https://telegram-bot-1riz.onrender.com"   # Render.com URL
-ADMIN_ID = 1249958916  # o'zingizni Telegram ID'ingiz
+WEBHOOK_PATH = "/webhook"
+WEBHOOK_URL = f"https://telegram-bot-1riz.onrender.com{WEBHOOK_PATH}"
+ADMIN_ID = 1249958916
 MANAGERS_FILE = Path("managers.json")
 
 bot = Bot(token=TOKEN)
@@ -66,7 +68,6 @@ async def contact_handler(message: Message):
         await message.answer("❌ Hozircha hech qanday menejer ro'yxatda yo'q.")
         return
 
-    # Tasodifiy menejer tanlash
     manager_id, manager_name = random.choice(list(managers_list.items()))
     user_sessions[user_id]["manager_id"] = int(manager_id)
     user_sessions[user_id]["step"] = "chat"
@@ -141,10 +142,14 @@ async def main():
         await dp.feed_webhook_update(bot, update)
         return web.Response()
 
-    app = web.Application()
-    app.router.add_post("/webhook", handle_webhook)
+    async def handle_root(request):
+        return web.Response(text="Bot is running 🚀")
 
-    # Webhookni sozlash
+    app = web.Application()
+    app.router.add_post(WEBHOOK_PATH, handle_webhook)
+    app.router.add_get("/", handle_root)  # health check uchun
+
+    # Webhookni to‘g‘ri URL bilan sozlash
     await bot.set_webhook(WEBHOOK_URL)
 
     runner = web.AppRunner(app)
@@ -152,11 +157,11 @@ async def main():
     site = web.TCPSite(runner, "0.0.0.0", 8080)
     await site.start()
 
-    logging.info("Webhook server started!")
+    logging.info(f"✅ Webhook server started at {WEBHOOK_URL}")
 
     while True:
         await asyncio.sleep(3600)
 
+
 if __name__ == "__main__":
-    import asyncio
     asyncio.run(main())
