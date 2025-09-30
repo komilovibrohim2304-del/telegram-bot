@@ -133,6 +133,32 @@ async def list_managers(message: Message):
     await message.answer(text)
 
 
+# ====== CHAT HANDLER ======
+@dp.message(F.text)
+async def chat_handler(message: Message):
+    user_id = message.from_user.id
+
+    # === Mijozdan xabar keldi ===
+    if user_sessions.get(user_id, {}).get("step") == "chat":
+        manager_id = user_sessions[user_id]["manager_id"]
+        await bot.send_message(
+            manager_id,
+            f"📩 Mijozdan ({user_sessions[user_id]['name']}):\n{message.text}"
+        )
+        return
+
+    # === Menejerdan xabar keldi ===
+    elif str(user_id) in managers_list:
+        # Shu menejerga bog'langan mijozni qidiramiz
+        for uid, data in user_sessions.items():
+            if data.get("manager_id") == user_id:
+                await bot.send_message(
+                    uid,
+                    f"👨‍💼 Menejerdan:\n{message.text}"
+                )
+                return
+
+
 # ====== START WEBHOOK ======
 async def main():
     from aiohttp import web
